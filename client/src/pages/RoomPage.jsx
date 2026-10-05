@@ -2,13 +2,15 @@ import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import SiteFooter from "../components/SiteFooter.jsx";
 import SiteHeader from "../components/SiteHeader.jsx";
+import QueuePanel from "../components/QueuePanel.jsx";
+import PlaybackPanel from "../components/PlaybackPanel.jsx";
 import { useRoom } from "../hooks/useRoom.js";
 
 export default function RoomPage() {
   const { roomCode = "" } = useParams();
   const location = useLocation();
   const [copied, setCopied] = useState(false);
-  const { room, members, status, error, nickname, memberId, setNickname } = useRoom(
+  const { room, members, queue, playback, status, error, nickname, memberId, setNickname } = useRoom(
     roomCode,
     location.state?.nickname || "",
     location.state?.memberId || "",
@@ -109,6 +111,12 @@ export default function RoomPage() {
               <div className="people-footer"><span className="live-dot" /> HERE TOGETHER, RIGHT NOW</div>
             </aside>
           </div>
+          <PlaybackPanel
+            playback={playback}
+            queue={queue}
+            isHost={Boolean(members.find((member) => member.id === memberId)?.isHost)}
+          />
+          <QueuePanel roomCode={roomCode} queue={queue} />
         </section>
       )}
 

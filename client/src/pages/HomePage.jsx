@@ -16,29 +16,45 @@ export default function HomePage() {
     setError("");
     setBusy(true);
 
-    const finish = () => {
+    let finished = false;
+    const finish = (message) => {
+      if (finished) return;
+      finished = true;
       setBusy(false);
       socket.off("connect_error", onConnectionError);
+      socket.off("connect", onConnect);
+      if (message) setError(message);
     };
+
     const onConnectionError = () => {
-      finish();
-      setError("Can't reach the room server. Check that it's running and try again.");
+      finish("Can't reach the Queuebox server. In PowerShell, run `npm.cmd run dev` from the queuebox folder, then try again.");
+    };
+
+    const onConnect = () => {
+      socket.timeout(8000).emit(action, payload, (timeoutError, result) => {
+        if (timeoutError) {
+          finish("The Queuebox server connected but didn't respond. Restart it with `npm.cmd run dev` from the queuebox folder, then try again.");
+          return;
+        }
+        if (!result?.ok) {
+          finish(result?.error || "Something went wrong. Please try again.");
+          return;
+        }
+        finish();
+        navigate(`/room/${result.room.code}`, {
+          state: { nickname: result.member.nickname, memberId: result.member.id },
+        });
+      });
     };
 
     socket.off("connect_error", onConnectionError);
+    socket.off("connect", onConnect);
     socket.once("connect_error", onConnectionError);
-    if (!socket.connected) socket.connect();
-
-    socket.emit(action, payload, (result) => {
-      finish();
-      if (!result?.ok) {
-        setError(result?.error || "Something went wrong. Please try again.");
-        return;
-      }
-      navigate(`/room/${result.room.code}`, {
-        state: { nickname: result.member.nickname, memberId: result.member.id },
-      });
-    });
+    if (socket.connected) onConnect();
+    else {
+      socket.once("connect", onConnect);
+      socket.connect();
+    }
   }
 
   function createRoom(event) {

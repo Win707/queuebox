@@ -4,6 +4,8 @@ import { socket } from "../lib/socket.js";
 export function useRoom(roomCode, initialNickname = "", initialMemberId = "") {
   const [room, setRoom] = useState(null);
   const [members, setMembers] = useState([]);
+  const [queue, setQueue] = useState([]);
+  const [playback, setPlayback] = useState(null);
   const [status, setStatus] = useState("connecting");
   const [error, setError] = useState("");
   const [nickname, setNickname] = useState(initialNickname);
@@ -24,15 +26,27 @@ export function useRoom(roomCode, initialNickname = "", initialMemberId = "") {
       if (!active) return;
       setRoom(state.room);
       setMembers(state.members);
+      setQueue(state.queue || []);
+      setPlayback(state.playback || null);
       setStatus("ready");
     };
     const onPresence = (presence) => {
       if (active) setMembers(presence.members);
     };
+    const onQueueUpdate = (update) => {
+      if (active) setQueue(update.queue);
+    };
+    const onPlaybackUpdate = (update) => {
+      if (!active) return;
+      setQueue(update.queue);
+      setPlayback(update.playback);
+    };
 
     socket.on("connect_error", onConnectionError);
     socket.on("room:state", onRoomState);
     socket.on("room:presence", onPresence);
+    socket.on("queue:updated", onQueueUpdate);
+    socket.on("playback:updated", onPlaybackUpdate);
 
     if (!nickname) {
       setStatus("nickname");
@@ -47,6 +61,8 @@ export function useRoom(roomCode, initialNickname = "", initialMemberId = "") {
         }
         setRoom(result.room);
         setMembers(result.members);
+        setQueue(result.queue || []);
+        setPlayback(result.playback || null);
         setNickname(result.member.nickname);
         setMemberId(result.member.id);
         setStatus("ready");
@@ -58,8 +74,10 @@ export function useRoom(roomCode, initialNickname = "", initialMemberId = "") {
       socket.off("connect_error", onConnectionError);
       socket.off("room:state", onRoomState);
       socket.off("room:presence", onPresence);
+      socket.off("queue:updated", onQueueUpdate);
+      socket.off("playback:updated", onPlaybackUpdate);
     };
   }, [roomCode, nickname]);
 
-  return { room, members, status, error, nickname, memberId, setNickname };
+  return { room, members, queue, playback, status, error, nickname, memberId, setNickname, setError };
 }

@@ -1,4 +1,15 @@
-import { createRoom, getRoom, joinRoom, leaveRoom, serializeRoom } from "../services/roomService.js";
+import {
+  addTrack,
+  controlPlayback,
+  createRoom,
+  getRoom,
+  joinRoom,
+  leaveRoom,
+  serializePlayback,
+  serializeQueue,
+  serializeRoom,
+  voteTrack,
+} from "../services/roomService.js";
 
 export function registerRoomHandlers(io, socket) {
   socket.on("room:create", (payload, acknowledge) => {
@@ -10,7 +21,12 @@ export function registerRoomHandlers(io, socket) {
 
     const room = getRoom(result.room.code);
     moveSocketToRoom(io, socket, room.code);
-    acknowledge?.({ ...result, members: room.members });
+    acknowledge?.({
+      ...result,
+      members: room.members,
+      queue: serializeQueue(room, socket.id),
+      playback: serializePlayback(room, socket.id),
+    });
     broadcastPresence(io, room.code);
   });
 
@@ -23,8 +39,46 @@ export function registerRoomHandlers(io, socket) {
 
     const room = getRoom(result.room.code);
     moveSocketToRoom(io, socket, room.code);
-    acknowledge?.({ ...result, members: room.members });
+    acknowledge?.({
+      ...result,
+      members: room.members,
+      queue: serializeQueue(room, socket.id),
+      playback: serializePlayback(room, socket.id),
+    });
     broadcastPresence(io, room.code);
+  });
+
+  socket.on("queue:add", (payload, acknowledge) => {
+    const result = addTrack(socket.id, payload);
+    if (!result.ok) {
+      acknowledge?.(result);
+      return;
+    }
+
+    acknowledge?.({ ok: true, track: result.track });
+    broadcastQueue(io, result.roomCode);
+  });
+
+  socket.on("queue:vote", (payload, acknowledge) => {
+    const result = voteTrack(socket.id, payload);
+    if (!result.ok) {
+      acknowledge?.(result);
+      return;
+    }
+
+    acknowledge?.({ ok: true });
+    broadcastQueue(io, result.roomCode);
+  });
+
+  socket.on("playback:control", (payload, acknowledge) => {
+    const result = controlPlayback(socket.id, payload);
+    if (!result.ok) {
+      acknowledge?.(result);
+      return;
+    }
+
+    acknowledge?.({ ok: true });
+    broadcastPlayback(io, result.roomCode);
   });
 
   socket.on("disconnect", () => {
@@ -50,8 +104,33 @@ function broadcastPresence(io, roomCode) {
     members: room.members,
     count: room.members.length,
   });
-  io.to(roomCode).emit("room:state", {
-    room: serializeRoom(room),
-    members: room.members,
-  });
+  for (const member of room.members) {
+    io.to(member.id).emit("room:state", {
+      room: serializeRoom(room),
+      members: room.members,
+      queue: serializeQueue(room, member.id),
+      playback: serializePlayback(room, member.id),
+    });
+  }
+}
+
+function broadcastQueue(io, roomCode) {
+  const room = getRoom(roomCode);
+  if (!room) return;
+
+  for (const member of room.members) {
+    io.to(member.id).emit("queue:updated", { queue: serializeQueue(room, member.id) });
+  }
+}
+
+function broadcastPlayback(io, roomCode) {
+  const room = getRoom(roomCode);
+  if (!room) return;
+
+  for (const member of room.members) {
+    io.to(member.id).emit("playback:updated", {
+      playback: serializePlayback(room, member.id),
+      queue: serializeQueue(room, member.id),
+    });
+  }
 }
